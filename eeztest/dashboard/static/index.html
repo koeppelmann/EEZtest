@@ -3,139 +3,200 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>EEZtest — live</title>
+<title>EEZtest — devnet monitor</title>
 <style>
   :root {
-    --bg: #0e1116; --panel: #161b22; --panel2: #1c232c; --rule: #2a323d;
-    --ink: #e6edf3; --muted: #8b98a6; --accent: #4a9eff; --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    --ok: #3fb950; --warn: #d29922; --err: #f85149; --info: #58a6ff;
+    --bg:#0e1116; --panel:#161b22; --panel2:#1c232c; --rule:#2a323d;
+    --ink:#e6edf3; --muted:#8b98a6; --accent:#4a9eff;
+    --mono: ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --ok:#3fb950; --warn:#d29922; --err:#f85149; --info:#58a6ff;
   }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink);
-    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-  a { color: var(--accent); }
-  header.top { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
-    padding: 16px 24px; border-bottom: 1px solid var(--rule); background: var(--panel); position: sticky; top: 0; z-index: 5; }
-  header.top h1 { margin: 0; font-size: 18px; letter-spacing: .3px; }
-  header.top h1 .eez { color: var(--accent); }
-  .badge { font: 12px/1 var(--mono); color: var(--muted); padding: 4px 8px; border: 1px solid var(--rule); border-radius: 999px; }
-  .clock { margin-left: auto; font: 13px/1 var(--mono); color: var(--muted); display: flex; gap: 14px; align-items: center; }
-  .bar { height: 4px; background: var(--panel2); border-radius: 2px; overflow: hidden; width: 160px; }
-  .bar > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width 1s linear; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  a{color:var(--accent);text-decoration:none}
+  header.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px 22px;
+    border-bottom:1px solid var(--rule);background:var(--panel);position:sticky;top:0;z-index:10}
+  header.top h1{margin:0;font-size:17px;letter-spacing:.3px;cursor:pointer}
+  header.top h1 .eez{color:var(--accent)}
+  .badge{font:12px/1 var(--mono);color:var(--muted);padding:4px 9px;border:1px solid var(--rule);border-radius:999px}
+  .clock{margin-left:auto;font:12px/1 var(--mono);color:var(--muted);display:flex;gap:12px;align-items:center}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;background:var(--err)}
+  .dot.live{background:var(--ok);box-shadow:0 0 6px var(--ok)}
 
-  main { padding: 20px 24px 60px; max-width: 1500px; margin: 0 auto; }
-  .chains { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-bottom: 22px; }
-  .chain { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; }
-  .chain h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
-  .chain .kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; font: 13px/1.6 var(--mono); }
-  .chain .kv b { color: var(--muted); font-weight: 400; }
-  .chain .kv span { text-align: right; }
+  /* instance switcher */
+  nav.tabs{display:flex;gap:6px;flex-wrap:wrap;padding:10px 22px;border-bottom:1px solid var(--rule);
+    background:var(--panel);position:sticky;top:53px;z-index:9}
+  nav.tabs button{background:var(--panel2);color:var(--ink-soft,#cbd5e1);border:1px solid var(--rule);
+    border-radius:7px;padding:6px 12px;font:12px/1.2 var(--mono);cursor:pointer;display:flex;align-items:center;gap:7px}
+  nav.tabs button:hover{border-color:var(--accent)}
+  nav.tabs button.active{background:var(--accent);color:#04121f;border-color:var(--accent);font-weight:600}
+  nav.tabs button .sd{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+  nav.tabs button .sd.up{background:var(--ok)} nav.tabs button .sd.down{background:var(--err)}
+  nav.tabs button .n{background:rgba(248,81,73,.2);color:var(--err);border-radius:999px;padding:1px 6px;font-size:10px}
+  nav.tabs button.active .n{background:rgba(0,0,0,.25);color:#04121f}
 
-  h2.section { font-size: 13px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted);
-    margin: 8px 0 12px; border-bottom: 1px solid var(--rule); padding-bottom: 6px; }
+  main{padding:20px 22px 60px;max-width:1600px;margin:0 auto}
+  h2.section{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);
+    margin:6px 0 12px;border-bottom:1px solid var(--rule);padding-bottom:6px}
 
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 14px; }
-  .card { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
-  .card .head { display: flex; align-items: center; gap: 10px; }
-  .card .head .name { font-weight: 600; font-size: 15px; }
-  .card .head .desc { color: var(--muted); font-size: 12px; }
-  .pill { font: 11px/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; padding: 4px 8px; border-radius: 6px; }
-  .pill.running { background: rgba(63,185,80,.15); color: var(--ok); }
-  .pill.done { background: rgba(88,166,255,.15); color: var(--info); }
-  .pill.idle { background: rgba(139,152,166,.15); color: var(--muted); }
-  .pill.error { background: rgba(248,81,73,.15); color: var(--err); }
-  .pill.disabled { background: rgba(139,152,166,.1); color: var(--muted); }
-  .pill.init { background: rgba(210,153,34,.15); color: var(--warn); }
+  /* fleet overview */
+  .fleet{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+  .inst{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:16px;cursor:pointer;
+    display:flex;flex-direction:column;gap:10px;transition:border-color .15s}
+  .inst:hover{border-color:var(--accent)}
+  .inst .name{font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px}
+  .inst .mode{font:10px/1 var(--mono);text-transform:uppercase;letter-spacing:.08em;padding:3px 7px;
+    border-radius:5px;background:var(--panel2);color:var(--muted)}
+  .inst .mode.testing{background:rgba(63,185,80,.15);color:var(--ok)}
+  .inst .chains{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .inst .ch{background:var(--panel2);border-radius:7px;padding:8px 10px}
+  .inst .ch b{display:block;font:10px/1.4 var(--mono);color:var(--muted);text-transform:uppercase}
+  .inst .ch span{font:14px/1.3 var(--mono)}
+  .inst .ch.down span{color:var(--err);font-size:11px}
+  .inst .foot{display:flex;gap:14px;font:11px/1 var(--mono);color:var(--muted);flex-wrap:wrap}
+  .sevpill{padding:2px 7px;border-radius:999px;font:10px/1.5 var(--mono)}
+  .sevpill.critical,.sevpill.high{background:rgba(248,81,73,.16);color:var(--err)}
+  .sevpill.med,.sevpill.low{background:rgba(210,153,34,.16);color:var(--warn)}
+  .sevpill.info{background:rgba(88,166,255,.16);color:var(--info)}
 
-  .metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px 10px; }
-  .metric { background: var(--panel2); border-radius: 6px; padding: 6px 8px; }
-  .metric b { display: block; font: 11px/1.4 var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .04em;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .metric span { font: 15px/1.3 var(--mono); }
-  .events { font: 12px/1.5 var(--mono); color: var(--muted); max-height: 118px; overflow-y: auto; border-top: 1px solid var(--rule); padding-top: 8px; }
-  .events div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .events .ok { color: var(--ok); } .events .warn { color: var(--warn); } .events .error { color: var(--err); } .events .info { color: var(--muted); }
-  .uptime { color: var(--muted); font: 11px/1 var(--mono); }
-
-  .findings { margin-top: 24px; }
-  .finding { display: grid; grid-template-columns: 90px 150px 1fr; gap: 12px; align-items: baseline;
-    padding: 8px 12px; border: 1px solid var(--rule); border-left-width: 3px; border-radius: 6px; margin-bottom: 6px; background: var(--panel); }
-  .finding .sev { font: 11px/1 var(--mono); text-transform: uppercase; }
-  .finding .title { font-weight: 600; }
-  .finding .detail { color: var(--muted); font: 12px/1.5 var(--mono); grid-column: 1 / -1; }
-  .finding.info { border-left-color: var(--info); } .finding.low { border-left-color: var(--warn); }
-  .finding.med { border-left-color: var(--warn); } .finding.high { border-left-color: var(--err); }
-  .finding.critical { border-left-color: var(--err); background: rgba(248,81,73,.06); }
-  .finding.info .sev { color: var(--info); } .finding.low .sev, .finding.med .sev { color: var(--warn); }
-  .finding.high .sev, .finding.critical .sev { color: var(--err); }
-  .empty { color: var(--muted); font-style: italic; padding: 8px 0; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--err); }
-  .dot.live { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+  /* detail view */
+  .chains{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:20px}
+  .chain{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:14px 16px}
+  .chain h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+  .chain .kv{display:grid;grid-template-columns:max-content 1fr;gap:2px 12px;font:12px/1.6 var(--mono)}
+  .chain .kv b{color:var(--muted);font-weight:400}
+  .chain .kv span{text-align:right;word-break:break-all}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(350px,1fr));gap:14px}
+  .card{background:var(--panel);border:1px solid var(--rule);border-radius:10px;padding:14px 16px;
+    display:flex;flex-direction:column;gap:10px}
+  .card .head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .card .name{font-weight:600;font-size:15px}
+  .card .desc{color:var(--muted);font-size:12px}
+  .pill{font:11px/1 var(--mono);text-transform:uppercase;letter-spacing:.08em;padding:4px 8px;border-radius:6px}
+  .pill.running{background:rgba(63,185,80,.15);color:var(--ok)}
+  .pill.done{background:rgba(88,166,255,.15);color:var(--info)}
+  .pill.idle,.pill.disabled{background:rgba(139,152,166,.14);color:var(--muted)}
+  .pill.error{background:rgba(248,81,73,.15);color:var(--err)}
+  .pill.init{background:rgba(210,153,34,.15);color:var(--warn)}
+  .metrics{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:6px 10px}
+  .metric{background:var(--panel2);border-radius:6px;padding:6px 8px}
+  .metric b{display:block;font:10px/1.4 var(--mono);color:var(--muted);text-transform:uppercase;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .metric span{font:14px/1.3 var(--mono)}
+  .events{font:11px/1.5 var(--mono);color:var(--muted);max-height:110px;overflow-y:auto;
+    border-top:1px solid var(--rule);padding-top:8px}
+  .events div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .events .ok{color:var(--ok)}.events .warn{color:var(--warn)}.events .error{color:var(--err)}
+  .finding{display:grid;grid-template-columns:80px 190px 1fr;gap:10px;align-items:baseline;padding:8px 12px;
+    border:1px solid var(--rule);border-left-width:3px;border-radius:6px;margin-bottom:6px;background:var(--panel)}
+  .finding .sev{font:10px/1 var(--mono);text-transform:uppercase}
+  .finding .title{font-weight:600}
+  .finding .detail{color:var(--muted);font:11px/1.5 var(--mono);grid-column:1/-1;word-break:break-word}
+  .finding.info{border-left-color:var(--info)}.finding.low,.finding.med{border-left-color:var(--warn)}
+  .finding.high{border-left-color:var(--err)}.finding.critical{border-left-color:var(--err);background:rgba(248,81,73,.06)}
+  .finding.info .sev{color:var(--info)}.finding.low .sev,.finding.med .sev{color:var(--warn)}
+  .finding.high .sev,.finding.critical .sev{color:var(--err)}
+  .empty{color:var(--muted);font-style:italic;padding:8px 0}
+  .back{cursor:pointer;color:var(--accent);font:12px/1 var(--mono)}
 </style>
 </head>
 <body>
 <header class="top">
-  <h1><span class="eez">EEZ</span>test <span id="instance" class="badge">…</span></h1>
-  <span class="badge" id="worker-count">—</span>
-  <span class="badge" id="finding-count">0 findings</span>
+  <h1 onclick="showFleet()"><span class="eez">EEZ</span>test</h1>
+  <span class="badge" id="scope">fleet</span>
+  <span class="badge" id="count">—</span>
   <div class="clock">
     <span><span class="dot" id="live"></span> <span id="pollstate">connecting…</span></span>
-    <span id="elapsed">elapsed —</span>
-    <span id="remaining"></span>
-    <div class="bar"><i id="progress"></i></div>
+    <span id="elapsed"></span>
   </div>
 </header>
+<nav class="tabs" id="tabs"></nav>
 <main>
-  <div class="chains" id="chains"></div>
-  <h2 class="section">Workers</h2>
-  <div class="grid" id="workers"></div>
-  <div class="findings">
-    <h2 class="section">Findings</h2>
-    <div id="findings"></div>
-  </div>
+  <div id="view"></div>
 </main>
 <script>
-const $ = (id) => document.getElementById(id);
-function fmtDur(s){ if(s==null) return "—"; s=Math.max(0,Math.floor(s)); const h=Math.floor(s/3600),m=Math.floor(s%3600/60),ss=s%60; return (h?h+"h ":"")+(m<10?"0":"")+m+"m "+(ss<10?"0":"")+ss+"s"; }
-function fmtWei(v){ if(v==null||isNaN(v)) return String(v); const n=Number(v); if(n===0) return "0"; if(n<1e6) return n+" wei"; return (n/1e18).toPrecision(4)+" eth"; }
-function esc(s){ return String(s).replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
-function short(s){ s=String(s); return s.length>18 ? s.slice(0,10)+"…"+s.slice(-6) : s; }
+const $=(id)=>document.getElementById(id);
+let CURRENT=null;           // null = fleet view, else instance id
+let OVERVIEW={instances:[]};
+let failCount=0;
 
-function chainCard(title, c){
-  if(!c) return `<div class="chain"><h3>${title}</h3><div class="empty">no data</div></div>`;
-  const rows = Object.entries(c).map(([k,v])=>{
-    let val = v;
-    if(/balance|wei|value/i.test(k) && typeof v==="number") val = fmtWei(v);
-    else if(/head|block|nonce|chain_id|id/i.test(k)) val = String(v);
-    else if(typeof v==="string" && v.startsWith("0x")) val = short(v);
+const fmtDur=(s)=>{if(s==null)return "—";s=Math.max(0,Math.floor(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),ss=s%60;return (h?h+"h ":"")+(m<10?"0":"")+m+"m "+(ss<10?"0":"")+ss+"s";};
+const esc=(s)=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const short=(s)=>{s=String(s);return s.length>20?s.slice(0,10)+"…"+s.slice(-6):s;};
+function fmtWei(v){const n=Number(v);if(!isFinite(n))return esc(String(v));if(n===0)return "0";if(n<1e9)return n+" wei";return (n/1e18).toPrecision(4)+" eth";}
+function metricVal(k,v){
+  if(v==null)return "—";
+  if(typeof v==="object")return esc(JSON.stringify(v));
+  if(/wei|balance|spend/i.test(k)&&typeof v==="number")return fmtWei(v);
+  if(typeof v==="string"&&v.startsWith("0x"))return short(v);
+  if(typeof v==="number"&&!Number.isInteger(v))return v.toFixed(2);
+  return esc(String(v));
+}
+function sevPills(by){
+  const order=["critical","high","med","low","info"];
+  return order.filter(s=>by&&by[s]).map(s=>`<span class="sevpill ${s}">${by[s]} ${s}</span>`).join(" ")||'<span style="color:var(--muted)">no findings</span>';
+}
+
+function showFleet(){CURRENT=null;render();}
+function showInstance(id){CURRENT=id;render();}
+
+function tabsHtml(){
+  const fleet=`<button class="${CURRENT===null?"active":""}" onclick="showFleet()">▦ fleet</button>`;
+  const items=(OVERVIEW.instances||[]).map(i=>{
+    const up=i.l2&&i.l2.ok;
+    const nf=i.findings_total||0;
+    return `<button class="${CURRENT===i.instance?"active":""}" onclick="showInstance('${esc(i.instance)}')">
+      <span class="sd ${up?"up":"down"}"></span>${esc(i.instance)}${nf?`<span class="n">${nf}</span>`:""}</button>`;
+  }).join("");
+  return fleet+items;
+}
+
+function fleetHtml(){
+  const items=OVERVIEW.instances||[];
+  if(!items.length)return '<div class="empty">no instances configured</div>';
+  const cards=items.map(i=>{
+    const l1=i.l1||{},l2=i.l2||{};
+    const chBox=(label,c)=>`<div class="ch ${c.ok?"":"down"}"><b>${label}${c.chain_id?" · "+c.chain_id:""}</b>
+      <span>${c.ok?("#"+c.head):esc((c.error||"unreachable").slice(0,42))}</span></div>`;
+    return `<div class="inst" onclick="showInstance('${esc(i.instance)}')">
+      <div class="name">${esc(i.instance)} <span class="mode ${i.mode==="testing"?"testing":""}">${esc(i.mode||"")}</span></div>
+      <div class="chains">${chBox("L1",l1)}${chBox("L2",l2)}</div>
+      <div>${sevPills(i.findings_by_severity)}</div>
+      <div class="foot">
+        <span>workers ${i.workers_running}/${i.workers_total}${i.workers_error?` · ${i.workers_error} err`:""}</span>
+        <span>elapsed ${fmtDur(i.elapsed)}</span>
+        ${i.run_duration?`<span>of ${fmtDur(i.run_duration)}</span>`:""}
+      </div>
+    </div>`;
+  }).join("");
+  return `<h2 class="section">Devnets</h2><div class="fleet">${cards}</div>`;
+}
+
+function chainCard(title,c){
+  if(!c)return `<div class="chain"><h3>${title}</h3><div class="empty">no data</div></div>`;
+  const rows=Object.entries(c).map(([k,v])=>{
+    let val=v;
+    if(/balance|wei/i.test(k)&&typeof v==="number")val=fmtWei(v);
+    else if(typeof v==="string"&&v.startsWith("0x"))val=short(v);
+    else if(typeof v==="string"&&v.length>46)val=v.slice(0,44)+"…";
     return `<b>${esc(k)}</b><span>${esc(val)}</span>`;
   }).join("");
   return `<div class="chain"><h3>${title}</h3><div class="kv">${rows}</div></div>`;
 }
 
-function metricVal(k, v){
-  if(v==null) return "—";
-  if(typeof v==="object") return esc(JSON.stringify(v));
-  if(/wei|balance/i.test(k) && typeof v==="number") return fmtWei(v);
-  if(typeof v==="string" && v.startsWith("0x")) return short(v);
-  if(typeof v==="number" && !Number.isInteger(v)) return v.toFixed(2);
-  return esc(String(v));
-}
-
 function workerCard(w){
-  const counters = Object.entries(w.counters||{}).map(([k,v])=>`<div class="metric"><b>${esc(k)}</b><span>${v}</span></div>`).join("");
-  const metrics = Object.entries(w.metrics||{}).map(([k,v])=>`<div class="metric"><b>${esc(k)}</b><span>${metricVal(k,v)}</span></div>`).join("");
-  const events = (w.events||[]).slice(-8).reverse().map(e=>{
-    const t = new Date(e.ts*1000).toLocaleTimeString();
+  const counters=Object.entries(w.counters||{}).map(([k,v])=>`<div class="metric"><b>${esc(k)}</b><span>${v}</span></div>`).join("");
+  const metrics=Object.entries(w.metrics||{}).map(([k,v])=>`<div class="metric"><b>${esc(k)}</b><span>${metricVal(k,v)}</span></div>`).join("");
+  const events=(w.events||[]).slice(-8).reverse().map(e=>{
+    const t=new Date(e.ts*1000).toLocaleTimeString();
     return `<div class="${e.level}">${t} ${esc(e.message)}</div>`;
-  }).join("") || '<div class="info">no events</div>';
-  const nf = (w.findings||[]).length;
+  }).join("")||'<div>no events</div>';
+  const nf=(w.findings||[]).length;
   return `<div class="card">
-    <div class="head">
-      <span class="name">${esc(w.name)}</span>
+    <div class="head"><span class="name">${esc(w.name)}</span>
       <span class="pill ${w.status}">${w.status}</span>
-      <span class="uptime">${w.status==="running"?fmtDur(w.uptime):""} ${nf?("· "+nf+" find"):""}</span>
-    </div>
+      <span style="color:var(--muted);font:11px/1 var(--mono)">${w.status==="running"?fmtDur(w.uptime):""}${nf?" · "+nf+" find":""}</span></div>
     <div class="desc">${esc(w.description||"")}</div>
     <div class="metrics">${counters}${metrics||'<div class="empty">—</div>'}</div>
     <div class="events">${events}</div>
@@ -143,45 +204,61 @@ function workerCard(w){
 }
 
 function findingRow(f){
-  const t = new Date(f.ts*1000).toLocaleTimeString();
+  const t=new Date(f.ts*1000).toLocaleTimeString();
   return `<div class="finding ${f.severity}">
     <span class="sev">${esc(f.severity)}</span>
-    <span class="who">${t} · ${esc(f.worker||"")}</span>
+    <span>${t} · ${esc(f.worker||"")}${f.instance?" · "+esc(f.instance):""}</span>
     <span class="title">${esc(f.title)}</span>
-    <span class="detail">${esc(f.detail||"")}</span>
-  </div>`;
+    <span class="detail">${esc(f.detail||"")}</span></div>`;
 }
 
-let failCount = 0;
-async function refresh(){
-  try {
-    const [s, fr] = await Promise.all([
-      fetch("/api/state").then(r=>r.json()),
-      fetch("/api/findings").then(r=>r.json()),
+async function render(){
+  $("scope").textContent=CURRENT===null?"fleet":CURRENT;
+  $("tabs").innerHTML=tabsHtml();
+  if(CURRENT===null){
+    const n=(OVERVIEW.instances||[]).length;
+    const nf=(OVERVIEW.instances||[]).reduce((a,i)=>a+(i.findings_total||0),0);
+    $("count").textContent=`${n} devnet${n===1?"":"s"} · ${nf} findings`;
+    $("elapsed").textContent="up "+fmtDur(OVERVIEW.elapsed);
+    $("view").innerHTML=fleetHtml();
+    return;
+  }
+  try{
+    const [s,fr]=await Promise.all([
+      fetch(`/api/instances/${encodeURIComponent(CURRENT)}/state`).then(r=>r.json()),
+      fetch(`/api/instances/${encodeURIComponent(CURRENT)}/findings`).then(r=>r.json()),
     ]);
-    failCount = 0;
-    $("live").classList.add("live"); $("pollstate").textContent = "live";
-    $("instance").textContent = s.instance;
-    $("elapsed").textContent = "elapsed " + fmtDur(s.elapsed);
-    $("remaining").textContent = s.remaining!=null ? ("remaining " + fmtDur(s.remaining)) : "";
-    if(s.run_duration){ $("progress").style.width = Math.min(100, 100*s.elapsed/s.run_duration) + "%"; }
-    $("worker-count").textContent = (s.workers||[]).length + " workers";
-
-    const chain = s.chain||{};
-    $("chains").innerHTML = chainCard("L1", chain.l1) + chainCard("L2", chain.l2);
-    const ws = (s.workers||[]).slice().sort((a,b)=>a.name.localeCompare(b.name));
-    $("workers").innerHTML = ws.map(workerCard).join("") || '<div class="empty">no workers</div>';
-
-    const findings = (fr.findings||[]).slice().reverse();
-    $("finding-count").textContent = findings.length + " findings";
-    $("findings").innerHTML = findings.length ? findings.map(findingRow).join("") : '<div class="empty">none yet — good sign</div>';
-  } catch(e){
-    failCount++;
-    if(failCount>2){ $("live").classList.remove("live"); $("pollstate").textContent = "disconnected"; }
+    if(s.error){$("view").innerHTML=`<div class="empty">${esc(s.error)}</div>`;return;}
+    $("count").textContent=`${(s.workers||[]).length} workers`;
+    $("elapsed").textContent="elapsed "+fmtDur(s.elapsed)+(s.remaining!=null?" · left "+fmtDur(s.remaining):"");
+    const chain=s.chain||{};
+    const ws=(s.workers||[]).slice().sort((a,b)=>a.name.localeCompare(b.name));
+    const findings=(fr.findings||[]).slice().reverse();
+    $("view").innerHTML=`
+      <div class="back" onclick="showFleet()">← all devnets</div>
+      <h2 class="section">Chains</h2>
+      <div class="chains">${chainCard("L1",chain.l1)}${chainCard("L2",chain.l2)}</div>
+      <h2 class="section">Workers</h2>
+      <div class="grid">${ws.map(workerCard).join("")||'<div class="empty">no workers</div>'}</div>
+      <h2 class="section">Findings (${findings.length})</h2>
+      <div>${findings.length?findings.map(findingRow).join(""):'<div class="empty">none yet — good sign</div>'}</div>`;
+  }catch(e){
+    $("view").innerHTML=`<div class="empty">failed to load instance: ${esc(e)}</div>`;
   }
 }
-refresh();
-setInterval(refresh, 2000);
+
+async function poll(){
+  try{
+    OVERVIEW=await fetch("/api/overview").then(r=>r.json());
+    failCount=0;$("live").classList.add("live");$("pollstate").textContent="live";
+    await render();
+  }catch(e){
+    failCount++;
+    if(failCount>2){$("live").classList.remove("live");$("pollstate").textContent="disconnected";}
+  }
+}
+poll();
+setInterval(poll,3000);
 </script>
 </body>
 </html>

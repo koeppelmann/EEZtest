@@ -88,6 +88,76 @@ def cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    """Multi-devnet mode: supervise every configured instance behind one dashboard."""
+    import signal
+    import time
+
+    from .dashboard import DashboardServer
+    from .multi import MultiConfig, Supervisor
+
+    try:
+        mcfg = MultiConfig.load(args.config)
+    except (ConfigError, FileNotFoundError) as exc:
+        print(f"[eeztest] config error: {exc}", file=sys.stderr)
+        return 2
+
+    if args.duration is not None:
+        for c in mcfg.instances:
+            c.run.duration_seconds = args.duration
+    if args.port:
+        mcfg.dashboard.port = args.port
+
+    monitor_only = bool(args.monitor_only)
+    sup = Supervisor(mcfg, run_workers=not monitor_only)
+
+    def handler(signum, frame):  # noqa: ANN001, ARG001
+        print("\n[eeztest] stop signal received; shutting down…")
+        sup.stop()
+
+    try:
+        signal.signal(signal.SIGINT, handler)
+        signal.signal(signal.SIGTERM, handler)
+    except ValueError:
+        pass
+
+    print(f"[eeztest] supervising {len(sup.instances)} instance(s): {', '.join(sup.instance_ids())}")
+    sup.start()
+    dash = DashboardServer(sup, mcfg.dashboard.host, mcfg.dashboard.port)
+    dash.start()
+    print(f"[eeztest] dashboard → http://{mcfg.dashboard.host}:{mcfg.dashboard.port}")
+
+    # Longest configured duration governs the process; 0/absent ⇒ run forever.
+    duration = max((c.run.duration_seconds for c in mcfg.instances), default=0)
+    if args.forever or monitor_only:
+        duration = 0
+    if duration:
+        print(f"[eeztest] running for {duration}s (Ctrl-C to stop early)")
+        deadline = time.time() + duration
+    else:
+        print("[eeztest] running until interrupted")
+        deadline = None
+
+    try:
+        while not sup.stop_event.is_set():
+            if deadline is not None and time.time() >= deadline:
+                break
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
+
+    print("[eeztest] stopping…")
+    still = sup.shutdown(grace=30)
+    for iid, names in still.items():
+        print(f"[eeztest] {iid}: workers still active at shutdown: {', '.join(names)}")
+    dash.stop()
+
+    report_dir = args.report_dir or mcfg.instances[0].run.report_dir
+    for md, js in sup.write_reports(report_dir):
+        print(f"[eeztest] report: {md}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="eeztest", description="Autonomous test framework for EEZ chains")
     sub = p.add_subparsers(dest="command", required=True)
@@ -105,6 +175,15 @@ def build_parser() -> argparse.ArgumentParser:
     prep = sub.add_parser("report", help="serve the live dashboard only (monitor, no workers)")
     prep.add_argument("--config", "-c", required=True)
     prep.set_defaults(func=cmd_report)
+
+    ps = sub.add_parser("serve", help="multi-devnet: supervise every configured instance behind one dashboard")
+    ps.add_argument("--config", "-c", required=True, help="instances.yaml (or a single-instance config)")
+    ps.add_argument("--duration", type=int, help="override run duration (seconds) for all instances")
+    ps.add_argument("--port", type=int, help="override dashboard port")
+    ps.add_argument("--forever", action="store_true", help="ignore durations; run until interrupted")
+    ps.add_argument("--monitor-only", action="store_true", help="no workers; just watch the chains")
+    ps.add_argument("--report-dir", help="override report output directory")
+    ps.set_defaults(func=cmd_serve)
 
     return p
 

@@ -38,6 +38,7 @@ class Runner:
             cfg, self.l1, self.l2, self.eez, self.contracts, self.registry, self.stop_event
         )
         self.monitor = ChainMonitor(self.registry, self.l1, self.l2, self.stop_event)
+        # DashboardServer accepts a StateRegistry (single-instance) directly.
         self.dashboard = DashboardServer(self.registry, cfg.dashboard.host, cfg.dashboard.port)
         self.workers = []
 

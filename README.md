@@ -62,6 +62,43 @@ python -m eeztest run --config config.yaml --duration 120     # 2-minute smoke r
 make smoke                                                     # same, via Makefile
 ```
 
+## Multi-devnet mode
+
+One process can supervise several EEZ devnets behind a single dashboard with a
+devnet switcher — a fleet overview plus per-instance drill-down:
+
+```bash
+cp instances.example.yaml instances.yaml     # add one entry per devnet
+python -m eeztest serve --config instances.yaml --forever
+```
+
+`defaults:` is deep-merged under every instance, so adding a devnet usually means
+just its endpoints and EEZ registry:
+
+```yaml
+instances:
+  - instance_name: "chiado-6290"
+    l1: { rpc: "https://rpc.chiadochain.net", chain_id: 10200, xchain_front: "http://host:18999" }
+    l2: { rpc: "http://host:18688", chain_id: 6290, xchain_front: "http://host:18998" }
+    eez: { registry: "0x..." }
+  - instance_name: "devnet-12s"
+    ...
+```
+
+Instances are isolated — an unreachable devnet shows as **down** on the fleet
+view without affecting the others. Endpoints:
+
+```
+GET /api/overview                      cross-devnet summary
+GET /api/instances                     instance ids
+GET /api/instances/{id}/state          one devnet's full snapshot
+GET /api/instances/{id}/findings       one devnet's findings
+GET /api/findings                      findings across all devnets
+```
+
+Flags: `--forever` (ignore durations), `--monitor-only` (watch chains, run no
+workers), `--port`, `--duration`, `--report-dir`.
+
 ## Configure
 
 Everything is in `config.yaml` (start from `config.example.yaml`). The parameters
@@ -93,6 +130,7 @@ dashboard as `disabled`.
 eeztest run     --config config.yaml [--duration N] [--report-dir DIR]
 eeztest check   --config config.yaml     # verify connectivity + config, send nothing
 eeztest report  --config config.yaml     # serve the dashboard only (monitor, no workers)
+eeztest serve   --config instances.yaml [--forever] [--monitor-only] [--port N]
 ```
 
 ## Layout

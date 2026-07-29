@@ -1,0 +1,73 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# EEZtest MULTI-DEVNET configuration.
+#
+#   python -m eeztest serve --config instances.yaml
+#
+# One process supervises every instance below and serves a single dashboard with
+# a devnet switcher.  Instances are isolated — an unreachable devnet shows as
+# "down" on the fleet view without affecting the others.
+#
+# `defaults` is deep-merged UNDER each instance, so an instance only needs to
+# state what differs (its endpoints and EEZ addresses).
+# ─────────────────────────────────────────────────────────────────────────────
+
+dashboard:
+  host: "0.0.0.0"
+  port: 8799
+
+defaults:
+  wallet:
+    private_key_env: "EEZTEST_PRIVATE_KEY"
+    counterparty_key_env: "EEZTEST_COUNTERPARTY_KEY"
+  eez:
+    rollup_id: 1
+    ccm_l2: "0x4200000000000000000000000000000000000007"
+    crosschain_gas_limit: 300000
+  workers:
+    funder:          { enabled: true,  l2_accounts: 20, fund_amount_wei: 200000000000000 }
+    fuzzer:          { enabled: true,  interval_seconds: 3 }
+    contract_caller: { enabled: true,  verify: true, rounds: 3 }
+    congestion:      { enabled: true,  interval_seconds: 20 }
+    ddos:            { enabled: true,  concurrency: 25, rate_per_second: 100 }
+    proxy_builder:   { enabled: true,  interval_seconds: 15 }
+  run:
+    duration_seconds: 3600
+    report_dir: "reports"
+
+instances:
+  # ── a 1s/5s Chiado-anchored devnet ─────────────────────────────────────────
+  - instance_name: "chiado-6290"
+    l1:
+      rpc: "https://rpc.chiadochain.net"
+      chain_id: 10200
+      xchain_front: "http://65.109.26.16:18999"
+      min_gas_price_wei: 2000000000
+    l2:
+      rpc: "http://65.109.26.16:18688"
+      chain_id: 6290
+      xchain_front: "http://65.109.26.16:18998"
+      min_gas_price_wei: 1000000000
+    eez:
+      rollup_id: 1
+      registry: "0xf0656341956d83d047c5e26678130e453952f32c"
+    blockscout:
+      l1_api: "https://gnosis-chiado.blockscout.com/api/"
+      l2_api: "http://65.109.26.16:8088/api/"
+
+  # ── a second devnet (e.g. the isolated 12s config) ─────────────────────────
+  # Uncomment and fill in when it exists.  Because `defaults` supplies wallet,
+  # workers and run settings, only the endpoints + registry are needed here.
+  #
+  # - instance_name: "devnet-12s"
+  #   l1:
+  #     rpc: "http://<host>:8545"
+  #     chain_id: 10200
+  #     xchain_front: "http://<host>:18999"
+  #   l2:
+  #     rpc: "http://<host>:18688"
+  #     chain_id: 6290
+  #     xchain_front: "http://<host>:18998"
+  #   eez:
+  #     registry: "0x..."
+  #   blockscout:
+  #     l2_api: "http://<host>:8088/api/"

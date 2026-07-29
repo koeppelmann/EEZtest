@@ -1,0 +1,50 @@
+# Live EEZtest fleet config — served at https://eez.koeppelmann.dev
+#
+#   python -m eeztest serve --config instances.live.yaml --forever
+#
+# Add a new devnet by appending an entry under `instances:` — only its endpoints
+# and EEZ registry are needed; everything else is inherited from `defaults`.
+
+dashboard:
+  host: "127.0.0.1"
+  port: 11093
+
+defaults:
+  wallet:
+    private_key_env: "EEZTEST_PRIVATE_KEY"
+    counterparty_key_env: "EEZTEST_COUNTERPARTY_KEY"
+  eez:
+    rollup_id: 1
+    ccm_l2: "0x4200000000000000000000000000000000000007"
+    crosschain_gas_limit: 300000
+  workers:
+    funder:          { enabled: true,  l2_accounts: 12, fund_amount_wei: 50000000000000 }
+    fuzzer:          { enabled: true,  interval_seconds: 5 }
+    contract_caller: { enabled: true,  verify: true, rounds: 3 }
+    congestion:      { enabled: true,  interval_seconds: 30 }
+    ddos:            { enabled: true,  concurrency: 10, rate_per_second: 25 }
+    proxy_builder:   { enabled: true,  interval_seconds: 20 }
+  run:
+    duration_seconds: 3600
+    report_dir: "reports"
+
+instances:
+  # debjit's Chiado-anchored EEZ L2 on current main (1s/5s config).
+  # Deployed 2026-07-29; registry deploy block 22312162.
+  - instance_name: "chiado-6290"
+    l1:
+      rpc: "https://rpc.chiadochain.net"
+      chain_id: 10200
+      xchain_front: "http://65.109.26.16:18999"
+      min_gas_price_wei: 2000000000
+    l2:
+      rpc: "http://65.109.26.16:18688"
+      chain_id: 6290
+      xchain_front: "http://65.109.26.16:18998"
+      min_gas_price_wei: 1000000000
+    eez:
+      rollup_id: 1
+      registry: "0xf0656341956d83d047c5e26678130e453952f32c"
+    blockscout:
+      l1_api: "https://gnosis-chiado.blockscout.com/api/"
+      l2_api: "http://65.109.26.16:8088/api/"
