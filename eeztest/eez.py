@@ -115,9 +115,22 @@ class Eez:
     def create_l1_proxy(
         self, original_address: str, rollup_id: int | None = None, endpoint: str | None = None
     ) -> str:
+        """Deploy the L1 CrossChainProxy for (address, rollupId).
+
+        NOTE: this is an ordinary L1 contract call, NOT a cross-chain action, so it
+        must go to the plain L1 RPC.  The cross-chain front holds submitted txs to
+        compose them into the next sync block; a non-cross-chain tx sent there is
+        accepted (a hash is returned) but then never forwarded to L1 and never
+        mined — a silent drop.  Default to the plain RPC unless told otherwise.
+        """
         rid = self.rollup_id if rollup_id is None else rollup_id
         data = _enc_addr_uint(SEL_CREATE_PROXY, original_address, rid)
-        return self.l1.send(to=self.registry, data=data, gas=max(self.gas, 400_000), endpoint=endpoint)
+        return self.l1.send(
+            to=self.registry,
+            data=data,
+            gas=max(self.gas, 400_000),
+            endpoint=endpoint if endpoint is not None else self.cfg.l1.rpc,
+        )
 
     def create_l2_proxy(
         self, original_address: str, rollup_id: int, endpoint: str | None = None

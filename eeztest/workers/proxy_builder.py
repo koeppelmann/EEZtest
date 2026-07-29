@@ -314,16 +314,34 @@ class ProxyBuilderWorker(Worker):
         try:
             dep_h, ref = eez.deposit(target.address, self.dust, gas=self.gas)
         except RpcError as exc:
-            # A clean rejection at the RPC layer is a legitimate policy, but the
-            # user-visible message matters, so record it.
+            # A rejection here is only evidence about proxy-creation semantics if
+            # it is actually ABOUT the proxy.  Transport-level refusals (nonce
+            # ordering, fee, funds) say nothing about whether the builder creates
+            # proxies lazily — attributing them to proxy semantics produces a
+            # false finding, so classify before concluding.
+            msg = str(exc).lower()
+            transport = any(
+                k in msg
+                for k in ("nonce", "underpriced", "insufficient funds", "gas price",
+                          "already known", "replacement", "fee cap", "intrinsic gas")
+            )
             self.state.incr("implicit_rejected_by_rpc")
+            if transport:
+                self.state.incr("implicit_inconclusive_transport")
+                self.state.log(
+                    f"[implicit] transport-level rejection (not proxy semantics), "
+                    f"trial inconclusive: {exc}",
+                    "warn",
+                )
+                return
             self._finding_once(
                 "implicit_rejected_by_rpc",
                 title="Front rejects a deposit to a not-yet-created proxy",
                 severity="low",
                 detail=(
                     f"eth_sendRawTransaction to {self.cfg.l1.xchain_front} refused a deposit at "
-                    f"the un-created proxy {proxy}: {exc} — proxies must be pre-created"
+                    f"the un-created proxy {proxy}: {exc}. Rejection is proxy-specific (not a "
+                    f"nonce/fee/funds error), so the front appears to require pre-created proxies."
                 ),
                 proxy=proxy,
                 endpoint=self.cfg.l1.xchain_front,
