@@ -20,6 +20,7 @@ from eth_account.datastructures import SignedTransaction
 from eth_utils import keccak, to_checksum_address
 
 from .config import ChainConfig
+from .nonce import parse_expected_nonce
 
 
 class RpcError(Exception):
@@ -68,6 +69,8 @@ class ChainClient:
         # Serializes allocate+sign+broadcast (see `send`) — the cross-chain fronts
         # require nonces to ARRIVE in order, not merely be allocated in order.
         self._send_lock = threading.Lock()
+        # Times a front corrected our nonce (rising => silent drops upstream).
+        self.nonce_resyncs = 0
         # When set, long receipt waits abort promptly so shutdown isn't blocked.
         self.stop_event = stop_event
 
@@ -195,16 +198,30 @@ class ChainClient:
         auto_nonce = nonce is None
         with self._send_lock:
             n = self.next_nonce() if auto_nonce else nonce
-            try:
-                tx = self.build_tx(to=to, value=value, data=data, gas=gas, gas_price=gas_price, nonce=n)
-                signed = self.sign(tx)
-                h = self.tx_hash(signed)
-                self.send_raw(self.raw_hex(signed), endpoint)
-                return h
-            except Exception:
-                if auto_nonce:
-                    self.rollback_nonce(n)
-                raise
+            for attempt in (1, 2):
+                try:
+                    tx = self.build_tx(
+                        to=to, value=value, data=data, gas=gas, gas_price=gas_price, nonce=n
+                    )
+                    signed = self.sign(tx)
+                    h = self.tx_hash(signed)
+                    self.send_raw(self.raw_hex(signed), endpoint)
+                    return h
+                except Exception as exc:  # noqa: BLE001
+                    if auto_nonce:
+                        self.rollback_nonce(n)
+                    want = parse_expected_nonce(str(exc))
+                    if attempt == 1 and auto_nonce and want is not None and want != n:
+                        # The front names the nonce it actually wants.  Because it
+                        # can accept a tx and then silently drop it, our cursor can
+                        # sit ahead of the chain forever; trust the front once.
+                        self.nonce_resyncs += 1
+                        with self._nonce_lock:
+                            self._local_nonce = want + 1
+                        n = want
+                        continue
+                    raise
+            raise RuntimeError("unreachable")
 
     # ── receipts ────────────────────────────────────────────────────────────
     def get_receipt(self, tx_hash: str) -> Receipt | None:

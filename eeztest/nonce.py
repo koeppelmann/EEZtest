@@ -9,6 +9,7 @@ roll back, all serialized per (chain, address).
 """
 from __future__ import annotations
 
+import re
 import threading
 from typing import Callable
 
@@ -69,3 +70,24 @@ class NonceManager:
         """Convenience: fetch pending (outside the lock) then allocate."""
         pending = fetch_pending()
         return self.allocate(chain_tag, address, pending)
+
+    def force_next(self, chain_tag: str, address: str, nonce: int) -> None:
+        """Pin the next nonce for (chain, address), overriding our cursor."""
+        key = (chain_tag, address.lower())
+        with self._lock:
+            self._next[key] = nonce
+
+
+# The EEZ cross-chain fronts reject an out-of-sequence nonce with a message that
+# names the nonce they actually want, e.g.
+#   "invalid nonce 46 for 0x…: expected next unreserved nonce 45 (source-chain nonce 45)"
+# That is authoritative and worth obeying: because the front can accept a tx and
+# then silently drop it, the chain's nonce may never advance even though the
+# sender counted the tx as sent — desynchronising the local cursor and wedging
+# every later tx.  Parsing the expected value lets a sender resync and retry.
+_EXPECTED_NONCE_RE = re.compile(r"expected next unreserved nonce\s+(\d+)", re.I)
+
+
+def parse_expected_nonce(message: str) -> int | None:
+    m = _EXPECTED_NONCE_RE.search(message or "")
+    return int(m.group(1)) if m else None

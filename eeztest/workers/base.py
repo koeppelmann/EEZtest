@@ -20,7 +20,7 @@ from eth_utils import keccak, to_checksum_address
 from ..config import Config
 from ..contracts import Contracts
 from ..eez import Eez
-from ..nonce import NonceManager
+from ..nonce import NonceManager, parse_expected_nonce
 from ..rpc import ChainClient
 from ..state import StateRegistry, WorkerState
 
@@ -70,6 +70,9 @@ class WorkerContext:
         # concurrent workers sharing the funded pool never collide or gap.
         self.nonces = NonceManager()
         self._account_cache: dict[str, Account] = {}
+        # Count of times a front told us the true next nonce and we obeyed it.
+        # A rising value means transactions are being silently dropped upstream.
+        self.nonce_resyncs = 0
 
     def put_shared(self, key: str, value: Any) -> None:
         with self._shared_lock:
@@ -112,24 +115,35 @@ class WorkerContext:
         # order — they must arrive in order too.
         with self.nonces.send_lock(tag, addr):
             nonce = self.nonces.allocate(tag, addr, client.nonce(addr, "pending"))
-            tx: dict[str, Any] = {
-                "value": value,
-                "data": data,
-                "gas": gas,
-                "gasPrice": gp,
-                "nonce": nonce,
-                "chainId": client.cfg.chain_id,
-            }
-            if to is not None:
-                tx["to"] = to_checksum_address(to)
-            try:
-                signed = acct.sign_transaction(tx)
-                raw = "0x" + signed.raw_transaction.hex()
-                client.send_raw(raw, endpoint or client.cfg.rpc)
-                return "0x" + keccak(signed.raw_transaction).hex()
-            except Exception:
-                self.nonces.rollback(tag, addr, nonce)
-                raise
+            for attempt in (1, 2):
+                tx: dict[str, Any] = {
+                    "value": value,
+                    "data": data,
+                    "gas": gas,
+                    "gasPrice": gp,
+                    "nonce": nonce,
+                    "chainId": client.cfg.chain_id,
+                }
+                if to is not None:
+                    tx["to"] = to_checksum_address(to)
+                try:
+                    signed = acct.sign_transaction(tx)
+                    raw = "0x" + signed.raw_transaction.hex()
+                    client.send_raw(raw, endpoint or client.cfg.rpc)
+                    return "0x" + keccak(signed.raw_transaction).hex()
+                except Exception as exc:  # noqa: BLE001
+                    self.nonces.rollback(tag, addr, nonce)
+                    want = parse_expected_nonce(str(exc))
+                    if attempt == 1 and want is not None and want != nonce:
+                        # The front told us exactly which nonce it wants. Obey it
+                        # once — a silently-dropped tx leaves our cursor ahead of
+                        # the chain, and only the front knows the true position.
+                        self.nonce_resyncs += 1
+                        self.nonces.force_next(tag, addr, want)
+                        nonce = want
+                        continue
+                    raise
+            raise RuntimeError("unreachable")
 
     def resync_sub(self, client: ChainClient, address: str) -> None:
         self.nonces.resync(f"chain{client.cfg.chain_id}", address)
