@@ -225,8 +225,8 @@ async function render(){
   }
   try{
     const [s,fr]=await Promise.all([
-      fetch(`/api/instances/${encodeURIComponent(CURRENT)}/state`).then(r=>r.json()),
-      fetch(`/api/instances/${encodeURIComponent(CURRENT)}/findings`).then(r=>r.json()),
+      getJSON(`/api/instances/${encodeURIComponent(CURRENT)}/state`),
+      getJSON(`/api/instances/${encodeURIComponent(CURRENT)}/findings`),
     ]);
     if(s.error){$("view").innerHTML=`<div class="empty">${esc(s.error)}</div>`;return;}
     $("count").textContent=`${(s.workers||[]).length} workers`;
@@ -243,18 +243,43 @@ async function render(){
       <h2 class="section">Findings (${findings.length})</h2>
       <div>${findings.length?findings.map(findingRow).join(""):'<div class="empty">none yet — good sign</div>'}</div>`;
   }catch(e){
-    $("view").innerHTML=`<div class="empty">failed to load instance: ${esc(e)}</div>`;
+    $("view").innerHTML=`<div class="empty">${esc(e.message||e)}</div>`;
   }
+}
+
+// Fetch JSON, but fail clearly when the backend is down: a reverse proxy in front
+// of us answers with an HTML error page, and blindly .json()-ing that yields a
+// confusing "Unexpected token '<'" SyntaxError instead of "backend unreachable".
+async function getJSON(url){
+  const r=await fetch(url,{headers:{accept:"application/json"}});
+  const body=await r.text();
+  const looksHtml=/^\s*</.test(body);
+  if(!r.ok||looksHtml){
+    const err=new Error(looksHtml
+      ? `backend not responding (HTTP ${r.status}) — the eeztest service may be stopped`
+      : `HTTP ${r.status}`);
+    err.backendDown=true;
+    throw err;
+  }
+  try{ return JSON.parse(body); }
+  catch(e){ const err=new Error("malformed JSON from "+url); err.backendDown=true; throw err; }
 }
 
 async function poll(){
   try{
-    OVERVIEW=await fetch("/api/overview").then(r=>r.json());
+    OVERVIEW=await getJSON("/api/overview");
     failCount=0;$("live").classList.add("live");$("pollstate").textContent="live";
     await render();
   }catch(e){
     failCount++;
-    if(failCount>2){$("live").classList.remove("live");$("pollstate").textContent="disconnected";}
+    if(failCount>2){
+      $("live").classList.remove("live");
+      $("pollstate").textContent=e.backendDown?"backend down":"disconnected";
+      $("view").innerHTML='<div class="empty">'+esc(e.message)+
+        '<br><br>The dashboard page is served by a proxy, so this page still loads while the '+
+        'eeztest process behind it is stopped. Restart it with: '+
+        '<code>sudo systemctl start eeztest</code></div>';
+    }
   }
 }
 poll();
