@@ -55,7 +55,31 @@ class FunderWorker(Worker):
     def run(self) -> None:
         if not self._setup_with_retry():
             return
-        for i, acct in enumerate(self.accounts):
+        # Funding is retried indefinitely: the common real-world case is that the
+        # funding key is empty at startup and is topped up minutes or hours later.
+        # A one-shot pass would strand every downstream worker until a restart, so
+        # we re-attempt the still-unfunded accounts on every cycle.
+        cycle = 0
+        while not self.stopping():
+            cycle += 1
+            self._funding_pass(cycle)
+            self._maintain()
+            if len(self.funded) >= self.count:
+                # Everyone funded — settle into cheap top-up monitoring.
+                self.sleep(30)
+            else:
+                self.sleep(float(self.wcfg.get("retry_seconds", 30)))
+
+    def _funding_pass(self, cycle: int) -> None:
+        """One attempt at every account that is not yet funded."""
+        pending = [(i, a) for i, a in enumerate(self.accounts)
+                   if all(f.address != a.address for f in self.funded)]
+        if not pending:
+            return
+        self.state.gauge("funding_cycle", cycle)
+        self.state.gauge("pending_accounts", len(pending))
+        before = len(self.funded)
+        for i, acct in pending:
             if self.stopping():
                 break
             try:
@@ -64,11 +88,12 @@ class FunderWorker(Worker):
                 self.state.incr("fund_errors")
                 self.state.log(f"fund {acct.address[:10]} failed: {exc}", "warn")
         self.state.gauge("funded_count", len(self.funded))
-        self.state.log(f"funding pass complete: {len(self.funded)}/{self.count} funded")
-        # Keep the worker alive so its state stays visible; top up any that drained.
-        while not self.stopping():
-            self.sleep(30)
-            self._maintain()
+        gained = len(self.funded) - before
+        if gained or cycle == 1:
+            self.state.log(
+                f"funding pass {cycle}: {len(self.funded)}/{self.count} funded"
+                + (f" (+{gained})" if gained else "")
+            )
 
     def _fund_one(self, index: int, acct: SubAccount) -> None:
         l2 = self.ctx.l2

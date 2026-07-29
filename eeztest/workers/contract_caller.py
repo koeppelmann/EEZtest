@@ -137,9 +137,36 @@ class ContractCallerWorker(Worker):
 
         self.state.log("combination rounds complete; idling")
         self.state.set_status("idle")
+        # If the deploy stage could not land the probe contracts (typically an
+        # unfunded key at startup that gets topped up later), keep retrying: a
+        # one-shot deploy would leave the correctness suite permanently dead
+        # until someone restarted the process.
         while not self.stopping():
             self.sleep(30)
             self._refresh_gauges()
+            if self._missing_deployments():
+                self.state.log("deployments still missing — retrying deploy stage", "warn")
+                self.state.set_status("running")
+                self._stage_deploy()
+                if not self._missing_deployments():
+                    if self.do_verify:
+                        self._stage_verify()
+                    for rnd in range(1, self.rounds + 1):
+                        if self.stopping():
+                            break
+                        self.state.gauge("current_round", rnd)
+                        self._stage_combinations(rnd)
+                        self._publish_results()
+                    self.state.log("recovered: combination matrix completed after redeploy")
+                self.state.set_status("idle")
+
+    def _missing_deployments(self) -> bool:
+        """True when any probe contract is absent, so the matrix cannot run."""
+        return any(
+            name not in self.deployed[side]
+            for side in ("l1", "l2")
+            for name in ("Counter", "Logger")
+        )
 
     # ── stage 1: deployments ────────────────────────────────────────────────
     def _stage_deploy(self) -> None:

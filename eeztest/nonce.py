@@ -17,6 +17,23 @@ class NonceManager:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._next: dict[tuple[str, str], int] = {}
+        # Per-(chain,address) send serialization.  The EEZ cross-chain fronts
+        # enforce STRICTLY SEQUENTIAL nonces — they reject a future nonce with
+        # "expected next unreserved nonce N" instead of queueing it like a normal
+        # mempool.  Allocating in order is therefore not enough: the broadcasts
+        # must also *arrive* in order, so callers hold this lock across
+        # allocate+sign+send.
+        self._send_locks: dict[tuple[str, str], threading.Lock] = {}
+        self._send_locks_guard = threading.Lock()
+
+    def send_lock(self, chain_tag: str, address: str) -> threading.Lock:
+        key = (chain_tag, address.lower())
+        with self._send_locks_guard:
+            lk = self._send_locks.get(key)
+            if lk is None:
+                lk = threading.Lock()
+                self._send_locks[key] = lk
+            return lk
 
     def allocate(self, chain_tag: str, address: str, pending_nonce: int) -> int:
         """Reserve the next nonce for (chain, address).

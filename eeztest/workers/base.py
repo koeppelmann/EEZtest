@@ -105,25 +105,31 @@ class WorkerContext:
         acct = self._account_for(private_key)
         addr = to_checksum_address(acct.address)
         tag = f"chain{client.cfg.chain_id}"
-        nonce = self.nonces.allocate(tag, addr, client.nonce(addr, "pending"))
-        tx: dict[str, Any] = {
-            "value": value,
-            "data": data,
-            "gas": gas,
-            "gasPrice": gas_price if gas_price is not None else client.gas_price(),
-            "nonce": nonce,
-            "chainId": client.cfg.chain_id,
-        }
-        if to is not None:
-            tx["to"] = to_checksum_address(to)
-        try:
-            signed = acct.sign_transaction(tx)
-            raw = "0x" + signed.raw_transaction.hex()
-            client.send_raw(raw, endpoint or client.cfg.rpc)
-            return "0x" + keccak(signed.raw_transaction).hex()
-        except Exception:
-            self.nonces.rollback(tag, addr, nonce)
-            raise
+        gp = gas_price if gas_price is not None else client.gas_price()
+        # Hold the per-address send lock across allocate+sign+broadcast.  The EEZ
+        # cross-chain fronts reject out-of-order nonces outright ("expected next
+        # unreserved nonce N"), so concurrent senders must not merely allocate in
+        # order — they must arrive in order too.
+        with self.nonces.send_lock(tag, addr):
+            nonce = self.nonces.allocate(tag, addr, client.nonce(addr, "pending"))
+            tx: dict[str, Any] = {
+                "value": value,
+                "data": data,
+                "gas": gas,
+                "gasPrice": gp,
+                "nonce": nonce,
+                "chainId": client.cfg.chain_id,
+            }
+            if to is not None:
+                tx["to"] = to_checksum_address(to)
+            try:
+                signed = acct.sign_transaction(tx)
+                raw = "0x" + signed.raw_transaction.hex()
+                client.send_raw(raw, endpoint or client.cfg.rpc)
+                return "0x" + keccak(signed.raw_transaction).hex()
+            except Exception:
+                self.nonces.rollback(tag, addr, nonce)
+                raise
 
     def resync_sub(self, client: ChainClient, address: str) -> None:
         self.nonces.resync(f"chain{client.cfg.chain_id}", address)

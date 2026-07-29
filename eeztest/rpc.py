@@ -65,6 +65,9 @@ class ChainClient:
         self.address = to_checksum_address(self.account.address)
         self._nonce_lock = threading.Lock()
         self._local_nonce: int | None = None
+        # Serializes allocate+sign+broadcast (see `send`) — the cross-chain fronts
+        # require nonces to ARRIVE in order, not merely be allocated in order.
+        self._send_lock = threading.Lock()
         # When set, long receipt waits abort promptly so shutdown isn't blocked.
         self.stop_event = stop_event
 
@@ -184,18 +187,24 @@ class ChainClient:
         # Reserve the nonce ourselves so we can roll it back if the broadcast
         # fails — otherwise a failed send leaves a permanent gap that blocks every
         # later tx on this shared client (misreported downstream as a chain stall).
+        #
+        # The whole allocate+sign+broadcast is serialized: the EEZ cross-chain
+        # fronts reject out-of-order nonces ("expected next unreserved nonce N")
+        # rather than queueing them, so two threads racing here would have one
+        # rejected even though both nonces were correctly allocated.
         auto_nonce = nonce is None
-        n = self.next_nonce() if auto_nonce else nonce
-        try:
-            tx = self.build_tx(to=to, value=value, data=data, gas=gas, gas_price=gas_price, nonce=n)
-            signed = self.sign(tx)
-            h = self.tx_hash(signed)
-            self.send_raw(self.raw_hex(signed), endpoint)
-            return h
-        except Exception:
-            if auto_nonce:
-                self.rollback_nonce(n)
-            raise
+        with self._send_lock:
+            n = self.next_nonce() if auto_nonce else nonce
+            try:
+                tx = self.build_tx(to=to, value=value, data=data, gas=gas, gas_price=gas_price, nonce=n)
+                signed = self.sign(tx)
+                h = self.tx_hash(signed)
+                self.send_raw(self.raw_hex(signed), endpoint)
+                return h
+            except Exception:
+                if auto_nonce:
+                    self.rollback_nonce(n)
+                raise
 
     # ── receipts ────────────────────────────────────────────────────────────
     def get_receipt(self, tx_hash: str) -> Receipt | None:
