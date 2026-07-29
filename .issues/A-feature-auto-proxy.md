@@ -1,51 +1,53 @@
 ## What I'd like
 
-A way to deposit to an L2 address whose CrossChainProxy has not been deployed
-yet, in **one** L1 transaction, without first sending a separate
-`createCrossChainProxy` and waiting for it.
+Let me send a **plain, ordinary L1 transaction** — unchanged format, any wallet,
+any tooling — and have the composer deal with a CrossChainProxy that does not
+exist yet.
 
-Concretely, a payable entrypoint that carries the preimage:
+The mechanism that makes this possible without changing the transaction:
 
-```solidity
-function depositTo(address originalAddress, uint64 rollupId) external payable;
-```
+1. **I register a hint with the composer**, out of band: "address `P` is the
+   CrossChainProxy of `(originalAddress, rollupId)`".
+2. When the composer processes my transaction, it **checks whether the
+   transaction touches any hinted-at proxy**.
+3. If it does, the composer submits my transaction as a **bundle**:
+   `[deploy proxy, register incoming call, my tx]`.
 
-The requested behaviour is one L1 transaction that validates the inputs, deploys
-the proxy if needed, initiates the credit, and reverts rather than leaving value
-at an unintended address if setup cannot be completed.
+The hint is what makes step 2 possible at all. A bare transfer carries only
+`to: <20 bytes>, data: 0x`, and `(originalAddress, rollupId)` cannot feasibly be
+recovered from a CREATE2-derived address. But the composer does not need to
+*derive* anything if it has been *told* the mapping in advance — it only needs to
+match against a set of addresses it already knows.
 
-## Why an explicit preimage-carrying call is preferable to inference
+## Why this shape rather than a special entrypoint
 
-A bare value transfer contains only `to: <20 bytes>, data: 0x`. Without an
-external mapping or supplied inputs, the composer cannot feasibly recover
-arbitrary `(originalAddress, rollupId)` CREATE2 preimages from the 20-byte
-destination alone. (A narrow check such as "is the destination the proxy of
-`msg.sender`?" is possible but only covers deposits to one's own proxy, so it
-would not generalise.)
+I originally proposed a payable `depositTo(originalAddress, rollupId)` on the
+registry. The hint approach is better:
 
-An explicit call avoids inference: the caller supplies the preimage, allowing the
-implementation to validate the derived proxy address and perform creation and
-deposit in one operation.
+- **My transaction does not change.** No new ABI, no wallet support needed, works
+  with transactions I do not control the construction of.
+- **It is not limited to deposits.** Any transaction that happens to touch a
+  hinted proxy gets the proxy deployed and the incoming call registered ahead of
+  it, not just plain value transfers.
+- **The composer already builds bundles**, so `[deploy, register, tx]` is the
+  natural unit of work rather than a new contract-level primitive.
 
-## Why it's worth considering
+## Open questions on the design
 
-The current two-step flow works — `createCrossChainProxy`, wait for the receipt,
-then deposit. Verified end-to-end on the deployment below:
+1. **Hint registration** — what is the right channel? An RPC method on the ingress
+   front, a config entry, or something on-chain that the composer watches?
+2. **Lifetime and scope** — are hints per-sender or global? Do they expire once
+   the proxy is deployed (at which point they are unnecessary)?
+3. **Abuse** — can anyone register a hint for any `(address, rollupId)` pair?
+   Registering a hint is a claim the composer will act on, so it presumably wants
+   to verify the derivation itself before accepting one, which is cheap: given the
+   preimage, recomputing the CREATE2 address is a single hash.
+4. **Failure mode** — if the bundle cannot be built, is my transaction rejected,
+   or submitted without the proxy deployment (reproducing the failure below)?
 
-```
-proxy 0x9C9Ff3397FEf2ce83a92E31dF8c22523DFe4A142 created (917 bytes of code)
-deposit 0.002 xDAI -> proxy
-  t=10s  L2 credited +2000000000000000 wei
-  t=15s  L1 mined block 22314436, status 1, gasUsed 112106
-```
+## The failure this removes
 
-The reason to consider a one-shot entrypoint is that getting the order wrong
-produces a successful L1 transfer without the intended L2 credit, with no
-synchronous warning.
-
-## The failure mode it would remove
-
-Sending value to the computed proxy address **before** the proxy is deployed:
+Sending value to a computed proxy address before the proxy exists:
 
 | | |
 |---|---|
@@ -60,23 +62,42 @@ Sending value to the computed proxy address **before** the proxy is deployed:
 | recipient L2 balance, before and 75 min later | 0 → 0 |
 | proxy L1 balance now | 1,000,000,000 wei |
 
-It mined as an ordinary 21,000-gas transfer to an address that had no code. No L2
-credit followed. The value therefore remained as native L1 balance at the
-counterfactual proxy address rather than being processed as a deposit — it is
-still sitting there.
+It mined as an ordinary 21,000-gas transfer to a codeless address. No L2 credit
+followed; the value is still sitting at the counterfactual proxy address.
 
-I did not test whether deploying the proxy later provides any way to recover or
-process that pre-existing balance, so this report does not claim permanent loss.
-It is still a foot-gun: the L1 transaction succeeds while the intended deposit
-does not occur, and recovery behaviour is not apparent to the user.
+I did not test whether deploying the proxy later provides any way to recover that
+pre-existing balance, so this does not claim permanent loss — but recovery
+behaviour is not apparent to the user, and the L1 transaction succeeds either way.
 
-## Questions
+**What is the intended recovery behaviour here?** If none exists after later
+deployment, that is worth documenting.
 
-1. Is a one-shot `depositTo(originalAddress, rollupId)`-style entrypoint of
-   interest, or is the two-step flow the intended interface?
-2. What is the intended recovery behaviour when value has already been sent to an
-   undeployed proxy address? If no recovery path exists after later deployment,
-   documenting that warning would be valuable.
+## Meanwhile: a helper contract, which we can build ourselves
+
+Independent of the above, the same UX gap can be closed today at the contract
+level without any composer change — a helper you send funds to, which deploys the
+proxy and forwards the value in one transaction:
+
+```solidity
+function depositTo(address originalAddress, uint256 rollupId) external payable returns (address proxy) {
+    proxy = registry.computeCrossChainProxyAddress(originalAddress, rollupId);
+    if (proxy.code.length == 0) {
+        registry.createCrossChainProxy(originalAddress, rollupId);
+    }
+    (bool ok, ) = proxy.call{value: msg.value}("");
+    if (!ok) revert ForwardFailed(proxy);
+}
+```
+
+Because creation and forwarding are in one call, a failure reverts the whole
+transaction and the caller keeps their funds, instead of stranding value at a
+codeless address.
+
+We are deploying this ourselves and will add the address here once it is verified
+— raising it only so it is visible, and in case a canonical version belongs in
+this repo rather than living in ours. It is a workaround, not a substitute for the
+hint mechanism: it only helps for plain deposits through the helper, whereas the
+hint approach covers any transaction touching a hinted proxy.
 
 ## Environment
 

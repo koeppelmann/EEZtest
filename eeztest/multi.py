@@ -40,6 +40,7 @@ from .monitor import ChainMonitor
 from .report import write_report
 from .rpc import ChainClient
 from .state import StateRegistry
+from .vitals import VitalsTracker
 from .workers import ALL, WorkerContext
 
 
@@ -113,6 +114,9 @@ class InstanceRunner:
         self.l2 = ChainClient(cfg.l2, cfg.private_key, stop_event=stop_event)
         self.eez = Eez(cfg, self.l1, self.l2)
         self.monitor = ChainMonitor(self.registry, self.l1, self.l2, stop_event)
+        self.monitor.vitals = VitalsTracker(
+            cfg, cfg.eez.ccm_l2, cfg.eez.registry, poster=cfg.eez.batch_poster or None
+        )
 
     def start(self, contracts: Contracts, run_workers: bool = True) -> None:
         self.registry.set_chain("signer", self.l1.address)
@@ -236,6 +240,7 @@ class Supervisor:
                     "findings_by_severity": sev,
                     "elapsed": snap.get("elapsed", 0),
                     "run_duration": snap.get("run_duration", 0),
+                    "vitals": chain.get("vitals"),
                 }
             )
         return {

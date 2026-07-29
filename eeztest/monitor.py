@@ -10,6 +10,7 @@ import threading
 
 from .rpc import ChainClient
 from .state import StateRegistry
+from .vitals import VitalsTracker
 
 
 class ChainMonitor:
@@ -27,15 +28,24 @@ class ChainMonitor:
         self.stop_event = stop_event
         self.interval = interval
         self._thread: threading.Thread | None = None
+        self.vitals: VitalsTracker | None = None
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._run, name="chain-monitor", daemon=True)
         self._thread.start()
 
     def _run(self) -> None:
+        tick = 0
         while not self.stop_event.is_set():
             self.registry.set_chain("l1", self._probe(self.l1))
             self.registry.set_chain("l2", self._probe(self.l2))
+            # Vitals involve block scans, so refresh them less often than heads.
+            if self.vitals is not None and tick % 3 == 0:
+                try:
+                    self.registry.set_chain("vitals", self.vitals.sample().to_dict())
+                except Exception as exc:  # noqa: BLE001
+                    self.registry.set_chain("vitals", {"errors": [f"vitals failed: {exc}"]})
+            tick += 1
             self.stop_event.wait(self.interval)
 
     def _probe(self, client: ChainClient) -> dict:

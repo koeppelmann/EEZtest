@@ -41,6 +41,9 @@ class EezConfig:
     registry: str
     ccm_l2: str
     crosschain_gas_limit: int = 300_000
+    # Address that submits postAndVerifyBatch. Optional, but supplying it makes the
+    # "last L1 state-root update" vital exact instead of counting any registry call.
+    batch_poster: str = ""
 
 
 @dataclass

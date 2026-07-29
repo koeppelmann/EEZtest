@@ -99,6 +99,23 @@
   .finding.high .sev,.finding.critical .sev{color:var(--err)}
   .empty{color:var(--muted);font-style:italic;padding:8px 0}
   .back{cursor:pointer;color:var(--accent);font:12px/1 var(--mono)}
+
+  /* vitals — the facts that actually indicate chain health */
+  .vitals{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px;margin:0 0 20px}
+  .vital{background:var(--panel);border:1px solid var(--rule);border-left-width:3px;border-radius:9px;padding:11px 13px}
+  .vital b{display:block;font:10px/1.4 var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+  .vital .v{font:20px/1.15 var(--mono)}
+  .vital .sub{font:10px/1.4 var(--mono);color:var(--muted);margin-top:3px}
+  .vital.ok{border-left-color:var(--ok)} .vital.warn{border-left-color:var(--warn)}
+  .vital.bad{border-left-color:var(--err)} .vital.unknown{border-left-color:var(--muted)}
+  .vital.ok .v{color:var(--ok)} .vital.warn .v{color:var(--warn)} .vital.bad .v{color:var(--err)}
+  .vital.unknown .v{color:var(--muted)}
+  .vitals-note{font:11px/1.5 var(--mono);color:var(--muted);margin:-12px 0 18px}
+  .inst .vrow{display:flex;gap:10px;flex-wrap:wrap;font:11px/1.5 var(--mono);margin-top:2px}
+  .inst .vrow span{padding:2px 7px;border-radius:5px;background:var(--panel2)}
+  .inst .vrow span.bad{background:rgba(248,81,73,.16);color:var(--err)}
+  .inst .vrow span.warn{background:rgba(210,153,34,.16);color:var(--warn)}
+  .inst .vrow span.ok{background:rgba(63,185,80,.13);color:var(--ok)}
 </style>
 </head>
 <body>
@@ -162,6 +179,7 @@ function fleetHtml(){
     return `<div class="inst" onclick="showInstance('${esc(i.instance)}')">
       <div class="name">${esc(i.instance)} <span class="mode ${i.mode==="testing"?"testing":""}">${esc(i.mode||"")}</span></div>
       <div class="chains">${chBox("L1",l1)}${chBox("L2",l2)}</div>
+      ${vitalsBadges(i.vitals)}
       <div>${sevPills(i.findings_by_severity)}</div>
       <div class="foot">
         <span>workers ${i.workers_running}/${i.workers_total}${i.workers_error?` · ${i.workers_error} err`:""}</span>
@@ -171,6 +189,61 @@ function fleetHtml(){
     </div>`;
   }).join("");
   return `<h2 class="section">Devnets</h2><div class="fleet">${cards}</div>`;
+}
+
+
+// ── vitals ────────────────────────────────────────────────────────────────
+// Thresholds are deliberately generous; the point is to distinguish "healthy"
+// from "something has stopped", not to alarm on jitter.
+function ageClass(sec,warn,bad){
+  if(sec==null) return "unknown";
+  if(sec>=bad) return "bad";
+  if(sec>=warn) return "warn";
+  return "ok";
+}
+function fmtAge(sec){
+  if(sec==null) return "—";
+  if(sec<90) return Math.round(sec)+"s";
+  const m=sec/60;
+  if(m<90) return m.toFixed(1)+"m";
+  return (m/60).toFixed(1)+"h";
+}
+function vitalsHtml(v){
+  if(!v) return '<div class="empty">vitals not available yet</div>';
+  const cards=[
+    {k:"last L2 block", age:v.l2_block_age, warn:10, bad:60,
+     sub:v.l2_head!=null?("head #"+v.l2_head):""},
+    {k:"last L2 tx", age:v.l2_last_tx_age, warn:300, bad:1800,
+     sub:v.l2_last_tx_block!=null?("block #"+v.l2_last_tx_block)
+         :("none in last "+(v.l2_scan_depth||"?")+" blocks")},
+    {k:"last L1↔L2 call", age:v.xchain_last_age, warn:600, bad:3600,
+     sub:v.xchain_last_block!=null?("block #"+v.xchain_last_block)
+         :("none in last "+(v.l2_scan_depth||"?")+" blocks")},
+    {k:"last L1 state root", age:v.l1_stateroot_age, warn:60, bad:300,
+     sub:v.l1_stateroot_block!=null?("L1 #"+v.l1_stateroot_block):"none seen"},
+  ].map(c=>{
+    const cls=ageClass(c.age,c.warn,c.bad);
+    return `<div class="vital ${cls}"><b>${c.k}</b><div class="v">${fmtAge(c.age)}</div>
+      <div class="sub">${esc(c.sub)}</div></div>`;
+  });
+  // uncommitted: the metric that grows without bound during a composer stall
+  const u=v.uncommitted_blocks;
+  const ucls = u==null?"unknown":(u>=600?"bad":(u>=120?"warn":"ok"));
+  cards.push(`<div class="vital ${ucls}"><b>uncommitted blocks</b>
+    <div class="v">${u==null?"—":u}</div>
+    <div class="sub">L2 blocks since last L1 commit${v.uncommitted_is_estimate?" (approx)":""}</div></div>`);
+  let note="";
+  if(v.errors&&v.errors.length) note=`<div class="vitals-note">⚠ ${v.errors.map(esc).join(" · ")}</div>`;
+  return `<div class="vitals">${cards.join("")}</div>${note}`;
+}
+function vitalsBadges(v){
+  if(!v) return "";
+  const b=[];
+  b.push(`<span class="${ageClass(v.l2_block_age,10,60)}">blk ${fmtAge(v.l2_block_age)}</span>`);
+  b.push(`<span class="${ageClass(v.l1_stateroot_age,60,300)}">root ${fmtAge(v.l1_stateroot_age)}</span>`);
+  const u=v.uncommitted_blocks;
+  b.push(`<span class="${u==null?"":(u>=600?"bad":(u>=120?"warn":"ok"))}">uncommitted ${u==null?"—":u}</span>`);
+  return `<div class="vrow">${b.join("")}</div>`;
 }
 
 function chainCard(title,c){
@@ -236,6 +309,8 @@ async function render(){
     const findings=(fr.findings||[]).slice().reverse();
     $("view").innerHTML=`
       <div class="back" onclick="showFleet()">← all devnets</div>
+      <h2 class="section">Vitals</h2>
+      ${vitalsHtml(chain.vitals)}
       <h2 class="section">Chains</h2>
       <div class="chains">${chainCard("L1",chain.l1)}${chainCard("L2",chain.l2)}</div>
       <h2 class="section">Workers</h2>

@@ -33,10 +33,15 @@ instances:
   # Deployed 2026-07-29; registry deploy block 22312162.
   - instance_name: "chiado-6290"
     l1:
-      rpc: "https://rpc.chiadochain.net"
+      # publicnode reports an accurate eth_gasPrice; chiadochain.net reports 7 wei.
+      rpc: "https://gnosis-chiado-rpc.publicnode.com"
       chain_id: 10200
       xchain_front: "http://65.109.26.16:18999"
-      min_gas_price_wei: 2000000000
+      # rpc.chiadochain.net reports eth_gasPrice = 7 wei, which is NOT enough for
+      # inclusion — publicnode reports ~10 gwei and that is what the network takes.
+      # A 2 gwei floor got transactions silently evicted (they vanish and the nonce
+      # never advances, which looks exactly like a composer drop but is not).
+      min_gas_price_wei: 25000000000
     l2:
       rpc: "http://65.109.26.16:18688"
       chain_id: 6290
@@ -48,6 +53,7 @@ instances:
     eez:
       rollup_id: 1
       registry: "0xf0656341956d83d047c5e26678130e453952f32c"
+      batch_poster: "0x63A8eF9c0685767cB6d7B403a1af5b22f64c23d1"
     blockscout:
       l1_api: "https://gnosis-chiado.blockscout.com/api/"
       l2_api: "http://65.109.26.16:8088/api/"
