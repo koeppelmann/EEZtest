@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# EEZtest local — ignore ALL yaml configs except the checked-in example,
+# so a config file with an inline key under any name never gets committed.
+*.yaml
+*.yml
+!config.example.yaml
+reports/*.md
+reports/*.json
+!reports/.gitkeep
+
+# codex review scratch
+.codex_review_task.md
+
+# solc / compiler cache
+.solcx/
+.solc/
+
+# editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# secrets — never commit keys
+*.key
+wallet.json
+*wallet*.json

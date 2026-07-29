@@ -1,0 +1,95 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# EEZtest configuration.  Copy to config.yaml and fill in for your EEZ chain.
+#
+# An "EEZ instance" is an (L1, L2, composer-front) triple.  L1 is a real chain
+# (e.g. Chiado); the L2 is the EEZ rollup; the composer exposes two cross-chain
+# "fronts" — an inbound L1 front (you send L1-origin cross-chain txs here) and an
+# outbound L2 front (you send L2-origin cross-chain txs here).
+# ─────────────────────────────────────────────────────────────────────────────
+
+instance_name: "eez-chiado-6290"
+
+l1:
+  # Plain L1 RPC (reads + normal L1 txs).  A real chain such as Chiado.
+  rpc: "https://rpc.chiadochain.net"
+  chain_id: 10200
+  # Cross-chain INBOUND front: eth_sendRawTransaction sent here is held and
+  # composed into the next sync block.  Every other eth_* is forwarded to `rpc`.
+  # If your composer disables the inbound front, set to the same value as `rpc`
+  # (deposits will then go direct-to-L1, which most builds reject — see docs).
+  xchain_front: "http://65.109.26.16:18999"
+  # Extra L1 endpoints to fan the same signed tx at, for mempool-routing tests.
+  extra_mempools: []
+  # Minimum gas price to use on L1 (wei).  Chiado floor is ~1.5 gwei; bump if the
+  # public endpoint bounces low-fee txs.
+  min_gas_price_wei: 2000000000
+
+l2:
+  rpc: "http://65.109.26.16:18688"
+  chain_id: 6290
+  # Cross-chain OUTBOUND front (L2 → L1).  Send L2-origin cross-chain txs here.
+  xchain_front: "http://65.109.26.16:18998"
+  extra_mempools: []
+  # L2 gas is typically ~0; keep a nominal floor so signing produces valid txs.
+  min_gas_price_wei: 1000000000
+
+# EEZ protocol addresses.
+eez:
+  # This rollup's id in the L1 registry (0 is reserved for L1/mainnet).
+  rollup_id: 1
+  # L1 CrossChainProxy registry (EEZBase.createCrossChainProxy lives here).
+  registry: "0xd3a59fc70e96dac105bc1f3ea8d80bb68e299317"
+  # L2 cross-chain manager predeploy (createCrossChainProxy on the L2 side).
+  ccm_l2: "0x4200000000000000000000000000000000000007"
+  # Gas floor for any tx that lands on / creates a CrossChainProxy.  The composer
+  # admits under-gassed L1 deposits and then loops forever; keep this >= 200k.
+  crosschain_gas_limit: 300000
+
+# Signing key that funds everything.  This account must hold L1 balance (to
+# deposit / bridge) and, ideally, some L2 balance to seed workers directly.
+# Prefer an env var; the file value is a fallback for local runs.
+wallet:
+  private_key_env: "EEZTEST_PRIVATE_KEY"
+  private_key: ""          # leave empty to force the env var
+  # Optional: a second key used as the "counterparty" in congestion races.
+  counterparty_key_env: "EEZTEST_COUNTERPARTY_KEY"
+  counterparty_key: ""
+
+# Blockscout instances for contract verification (optional but recommended).
+blockscout:
+  l1_api: "https://gnosis-chiado.blockscout.com/api/"
+  l2_api: "http://65.109.26.16:8088/api/"
+
+# Which workers to run, and their per-worker knobs.  A worker that is disabled
+# still appears on the dashboard as "disabled".
+workers:
+  funder:
+    enabled: true
+    l2_accounts: 25          # how many L2 sub-accounts to fund via the L1 proxy
+    fund_amount_wei: 300000000000000   # 0.0003 ETH each
+  fuzzer:
+    enabled: true
+    interval_seconds: 3
+  contract_caller:
+    enabled: true
+    verify: true             # attempt Blockscout verification of deployments
+  congestion:
+    enabled: true
+    interval_seconds: 20
+  ddos:
+    enabled: true
+    concurrency: 50          # parallel spam senders
+    rate_per_second: 200
+  proxy_builder:
+    enabled: true
+    interval_seconds: 15
+
+# Dashboard HTTP server.
+dashboard:
+  host: "0.0.0.0"
+  port: 8799
+
+# How long a full autonomous run lasts before the report is written.
+run:
+  duration_seconds: 3600     # 1 hour
+  report_dir: "reports"

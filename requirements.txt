@@ -1,0 +1,10 @@
+web3>=6.15,<8
+eth-account>=0.11
+eth-utils>=4
+py-solc-x>=2.0
+PyYAML>=6
+requests>=2.31
+fastapi>=0.110
+uvicorn>=0.29
+jinja2>=3.1
+rlp>=4

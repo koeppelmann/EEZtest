@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eeztest"
+version = "0.1.0"
+description = "Autonomous test framework for EEZ sync-rollup chains"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "web3>=6.15,<8",
+    "eth-account>=0.11",
+    "eth-utils>=4",
+    "py-solc-x>=2.0",
+    "PyYAML>=6",
+    "requests>=2.31",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "rlp>=4",
+]
+
+[project.scripts]
+eeztest = "eeztest.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["eeztest*"]
+
+[tool.setuptools.package-data]
+eeztest = ["dashboard/static/*.html"]

@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EEZtest — live</title>
+<style>
+  :root {
+    --bg: #0e1116; --panel: #161b22; --panel2: #1c232c; --rule: #2a323d;
+    --ink: #e6edf3; --muted: #8b98a6; --accent: #4a9eff; --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --ok: #3fb950; --warn: #d29922; --err: #f85149; --info: #58a6ff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  a { color: var(--accent); }
+  header.top { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+    padding: 16px 24px; border-bottom: 1px solid var(--rule); background: var(--panel); position: sticky; top: 0; z-index: 5; }
+  header.top h1 { margin: 0; font-size: 18px; letter-spacing: .3px; }
+  header.top h1 .eez { color: var(--accent); }
+  .badge { font: 12px/1 var(--mono); color: var(--muted); padding: 4px 8px; border: 1px solid var(--rule); border-radius: 999px; }
+  .clock { margin-left: auto; font: 13px/1 var(--mono); color: var(--muted); display: flex; gap: 14px; align-items: center; }
+  .bar { height: 4px; background: var(--panel2); border-radius: 2px; overflow: hidden; width: 160px; }
+  .bar > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width 1s linear; }
+
+  main { padding: 20px 24px 60px; max-width: 1500px; margin: 0 auto; }
+  .chains { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-bottom: 22px; }
+  .chain { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; }
+  .chain h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+  .chain .kv { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; font: 13px/1.6 var(--mono); }
+  .chain .kv b { color: var(--muted); font-weight: 400; }
+  .chain .kv span { text-align: right; }
+
+  h2.section { font-size: 13px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted);
+    margin: 8px 0 12px; border-bottom: 1px solid var(--rule); padding-bottom: 6px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .card .head { display: flex; align-items: center; gap: 10px; }
+  .card .head .name { font-weight: 600; font-size: 15px; }
+  .card .head .desc { color: var(--muted); font-size: 12px; }
+  .pill { font: 11px/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; padding: 4px 8px; border-radius: 6px; }
+  .pill.running { background: rgba(63,185,80,.15); color: var(--ok); }
+  .pill.done { background: rgba(88,166,255,.15); color: var(--info); }
+  .pill.idle { background: rgba(139,152,166,.15); color: var(--muted); }
+  .pill.error { background: rgba(248,81,73,.15); color: var(--err); }
+  .pill.disabled { background: rgba(139,152,166,.1); color: var(--muted); }
+  .pill.init { background: rgba(210,153,34,.15); color: var(--warn); }
+
+  .metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px 10px; }
+  .metric { background: var(--panel2); border-radius: 6px; padding: 6px 8px; }
+  .metric b { display: block; font: 11px/1.4 var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .04em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .metric span { font: 15px/1.3 var(--mono); }
+  .events { font: 12px/1.5 var(--mono); color: var(--muted); max-height: 118px; overflow-y: auto; border-top: 1px solid var(--rule); padding-top: 8px; }
+  .events div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .events .ok { color: var(--ok); } .events .warn { color: var(--warn); } .events .error { color: var(--err); } .events .info { color: var(--muted); }
+  .uptime { color: var(--muted); font: 11px/1 var(--mono); }
+
+  .findings { margin-top: 24px; }
+  .finding { display: grid; grid-template-columns: 90px 150px 1fr; gap: 12px; align-items: baseline;
+    padding: 8px 12px; border: 1px solid var(--rule); border-left-width: 3px; border-radius: 6px; margin-bottom: 6px; background: var(--panel); }
+  .finding .sev { font: 11px/1 var(--mono); text-transform: uppercase; }
+  .finding .title { font-weight: 600; }
+  .finding .detail { color: var(--muted); font: 12px/1.5 var(--mono); grid-column: 1 / -1; }
+  .finding.info { border-left-color: var(--info); } .finding.low { border-left-color: var(--warn); }
+  .finding.med { border-left-color: var(--warn); } .finding.high { border-left-color: var(--err); }
+  .finding.critical { border-left-color: var(--err); background: rgba(248,81,73,.06); }
+  .finding.info .sev { color: var(--info); } .finding.low .sev, .finding.med .sev { color: var(--warn); }
+  .finding.high .sev, .finding.critical .sev { color: var(--err); }
+  .empty { color: var(--muted); font-style: italic; padding: 8px 0; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--err); }
+  .dot.live { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1><span class="eez">EEZ</span>test <span id="instance" class="badge">…</span></h1>
+  <span class="badge" id="worker-count">—</span>
+  <span class="badge" id="finding-count">0 findings</span>
+  <div class="clock">
+    <span><span class="dot" id="live"></span> <span id="pollstate">connecting…</span></span>
+    <span id="elapsed">elapsed —</span>
+    <span id="remaining"></span>
+    <div class="bar"><i id="progress"></i></div>
+  </div>
+</header>
+<main>
+  <div class="chains" id="chains"></div>
+  <h2 class="section">Workers</h2>
+  <div class="grid" id="workers"></div>
+  <div class="findings">
+    <h2 class="section">Findings</h2>
+    <div id="findings"></div>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+function fmtDur(s){ if(s==null) return "—"; s=Math.max(0,Math.floor(s)); const h=Math.floor(s/3600),m=Math.floor(s%3600/60),ss=s%60; return (h?h+"h ":"")+(m<10?"0":"")+m+"m "+(ss<10?"0":"")+ss+"s"; }
+function fmtWei(v){ if(v==null||isNaN(v)) return String(v); const n=Number(v); if(n===0) return "0"; if(n<1e6) return n+" wei"; return (n/1e18).toPrecision(4)+" eth"; }
+function esc(s){ return String(s).replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+function short(s){ s=String(s); return s.length>18 ? s.slice(0,10)+"…"+s.slice(-6) : s; }
+
+function chainCard(title, c){
+  if(!c) return `<div class="chain"><h3>${title}</h3><div class="empty">no data</div></div>`;
+  const rows = Object.entries(c).map(([k,v])=>{
+    let val = v;
+    if(/balance|wei|value/i.test(k) && typeof v==="number") val = fmtWei(v);
+    else if(/head|block|nonce|chain_id|id/i.test(k)) val = String(v);
+    else if(typeof v==="string" && v.startsWith("0x")) val = short(v);
+    return `<b>${esc(k)}</b><span>${esc(val)}</span>`;
+  }).join("");
+  return `<div class="chain"><h3>${title}</h3><div class="kv">${rows}</div></div>`;
+}
+
+function metricVal(k, v){
+  if(v==null) return "—";
+  if(typeof v==="object") return esc(JSON.stringify(v));
+  if(/wei|balance/i.test(k) && typeof v==="number") return fmtWei(v);
+  if(typeof v==="string" && v.startsWith("0x")) return short(v);
+  if(typeof v==="number" && !Number.isInteger(v)) return v.toFixed(2);
+  return esc(String(v));
+}
+
+function workerCard(w){
+  const counters = Object.entries(w.counters||{}).map(([k,v])=>`<div class="metric"><b>${esc(k)}</b><span>${v}</span></div>`).join("");
+  const metrics = Object.entries(w.metrics||{}).map(([k,v])=>`<div class="metric"><b>${esc(k)}</b><span>${metricVal(k,v)}</span></div>`).join("");
+  const events = (w.events||[]).slice(-8).reverse().map(e=>{
+    const t = new Date(e.ts*1000).toLocaleTimeString();
+    return `<div class="${e.level}">${t} ${esc(e.message)}</div>`;
+  }).join("") || '<div class="info">no events</div>';
+  const nf = (w.findings||[]).length;
+  return `<div class="card">
+    <div class="head">
+      <span class="name">${esc(w.name)}</span>
+      <span class="pill ${w.status}">${w.status}</span>
+      <span class="uptime">${w.status==="running"?fmtDur(w.uptime):""} ${nf?("· "+nf+" find"):""}</span>
+    </div>
+    <div class="desc">${esc(w.description||"")}</div>
+    <div class="metrics">${counters}${metrics||'<div class="empty">—</div>'}</div>
+    <div class="events">${events}</div>
+  </div>`;
+}
+
+function findingRow(f){
+  const t = new Date(f.ts*1000).toLocaleTimeString();
+  return `<div class="finding ${f.severity}">
+    <span class="sev">${esc(f.severity)}</span>
+    <span class="who">${t} · ${esc(f.worker||"")}</span>
+    <span class="title">${esc(f.title)}</span>
+    <span class="detail">${esc(f.detail||"")}</span>
+  </div>`;
+}
+
+let failCount = 0;
+async function refresh(){
+  try {
+    const [s, fr] = await Promise.all([
+      fetch("/api/state").then(r=>r.json()),
+      fetch("/api/findings").then(r=>r.json()),
+    ]);
+    failCount = 0;
+    $("live").classList.add("live"); $("pollstate").textContent = "live";
+    $("instance").textContent = s.instance;
+    $("elapsed").textContent = "elapsed " + fmtDur(s.elapsed);
+    $("remaining").textContent = s.remaining!=null ? ("remaining " + fmtDur(s.remaining)) : "";
+    if(s.run_duration){ $("progress").style.width = Math.min(100, 100*s.elapsed/s.run_duration) + "%"; }
+    $("worker-count").textContent = (s.workers||[]).length + " workers";
+
+    const chain = s.chain||{};
+    $("chains").innerHTML = chainCard("L1", chain.l1) + chainCard("L2", chain.l2);
+    const ws = (s.workers||[]).slice().sort((a,b)=>a.name.localeCompare(b.name));
+    $("workers").innerHTML = ws.map(workerCard).join("") || '<div class="empty">no workers</div>';
+
+    const findings = (fr.findings||[]).slice().reverse();
+    $("finding-count").textContent = findings.length + " findings";
+    $("findings").innerHTML = findings.length ? findings.map(findingRow).join("") : '<div class="empty">none yet — good sign</div>';
+  } catch(e){
+    failCount++;
+    if(failCount>2){ $("live").classList.remove("live"); $("pollstate").textContent = "disconnected"; }
+  }
+}
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>
