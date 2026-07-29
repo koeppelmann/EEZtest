@@ -18,7 +18,7 @@ defaults:
     ccm_l2: "0x4200000000000000000000000000000000000007"
     crosschain_gas_limit: 300000
   workers:
-    funder:          { enabled: true,  l2_accounts: 12, fund_amount_wei: 50000000000000 }
+    funder:          { enabled: true,  l2_accounts: 12, fund_amount_wei: 1000000000000000 }
     fuzzer:          { enabled: true,  interval_seconds: 5 }
     contract_caller: { enabled: true,  verify: true, rounds: 3 }
     congestion:      { enabled: true,  interval_seconds: 30 }
@@ -41,7 +41,10 @@ instances:
       rpc: "http://65.109.26.16:18688"
       chain_id: 6290
       xchain_front: "http://65.109.26.16:18998"
-      min_gas_price_wei: 1000000000
+      # This L2 reports eth_gasPrice = 7 wei.  A 1-gwei floor would overpay by
+      # ~1.4e8x and inflate every worker's balance-floor heuristic, which starves
+      # the fuzzer/ddos of usable accounts.  Keep a small floor above the real price.
+      min_gas_price_wei: 1000
     eez:
       rollup_id: 1
       registry: "0xf0656341956d83d047c5e26678130e453952f32c"

@@ -46,6 +46,20 @@ class ChainMonitor:
             info["head"] = f"error: {exc}"
         try:
             info["gas_price_wei"] = client.gas_price()
+            # Surface a configured floor that wildly exceeds the chain's real
+            # price.  Overpaying by orders of magnitude silently inflates every
+            # worker's balance-floor heuristic and starves them of usable
+            # accounts, which looks like a chain problem but is a config trap.
+            observed = client.call("eth_gasPrice")
+            if observed:
+                observed_wei = int(observed, 16)
+                info["chain_gas_price_wei"] = observed_wei
+                floor = client.cfg.min_gas_price_wei
+                if observed_wei > 0 and floor > observed_wei * 1000:
+                    info["gas_price_warning"] = (
+                        f"configured min_gas_price_wei={floor} is {floor // max(observed_wei,1)}x "
+                        f"the chain's {observed_wei} wei — workers will overpay and may skip accounts"
+                    )
         except Exception:  # noqa: BLE001
             pass
         try:
