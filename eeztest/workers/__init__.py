@@ -14,6 +14,7 @@ from .ddos import DdosWorker
 from .funder import FunderWorker
 from .fuzzer import FuzzerWorker
 from .proxy_builder import ProxyBuilderWorker
+from .stateroot_race import StateRootRaceWorker
 
 ALL: dict[str, type[Worker]] = {
     "funder": FunderWorker,
@@ -22,6 +23,7 @@ ALL: dict[str, type[Worker]] = {
     "congestion": CongestionWorker,
     "ddos": DdosWorker,
     "proxy_builder": ProxyBuilderWorker,
+    "stateroot_race": StateRootRaceWorker,
 }
 
 __all__ = ["Worker", "WorkerContext", "ALL"]
