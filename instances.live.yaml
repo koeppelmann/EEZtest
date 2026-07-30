@@ -32,6 +32,17 @@ instances:
   # debjit's Chiado-anchored EEZ L2 on current main (1s/5s config).
   # Deployed 2026-07-29; registry deploy block 22312162.
   - instance_name: "chiado-6290"
+    # SUPERSEDED: the L2 (6290) was restarted and re-anchored to the new dev L1
+    # (devnet-7331 below). This entry stays for historical monitoring only — its
+    # chiado L1 attestation is frozen. Workers disabled so we do not double-load
+    # the shared L2 or drive its now-dead L1 front.
+    workers:
+      funder:          { enabled: false }
+      fuzzer:          { enabled: false }
+      contract_caller: { enabled: false }
+      congestion:      { enabled: false }
+      ddos:            { enabled: false }
+      proxy_builder:   { enabled: false }
     l1:
       # publicnode reports an accurate eth_gasPrice; chiadochain.net reports 7 wei.
       rpc: "https://gnosis-chiado-rpc.publicnode.com"
@@ -54,6 +65,55 @@ instances:
       rollup_id: 1
       registry: "0xf0656341956d83d047c5e26678130e453952f32c"
       batch_poster: "0x63A8eF9c0685767cB6d7B403a1af5b22f64c23d1"
+      rollup_manager: "0xca2189a9b1c47e05587c87a5f08e07b628382a1b"
+      proof_system: "0x1cb061514a37120f24364e781d21a26fb487c33b"
     blockscout:
       l1_api: "https://gnosis-chiado.blockscout.com/api/"
+      l2_api: "http://65.109.26.16:8088/api/"
+
+  # ── 12s dev-L1 deployment (debjit, 2026-07-29 afternoon) ─────────────────────
+  # Same L2 (chainId 6290) but anchored to a dev L1 (chainId 7331) that the team
+  # controls, so bundle drops are reduced. Uses a SEPARATE funded key (env
+  # EEZTEST2_PRIVATE_KEY) — a fresh account we control, NOT the shared Hardhat #0
+  # that the composer itself signs with.
+  - instance_name: "devnet-7331"
+    wallet:
+      private_key_env: "EEZTEST2_PRIVATE_KEY"
+    workers:
+      # TEMPORARILY MONITOR-ONLY (2026-07-30): the L2's L1 attestation is deeply
+      # stalled (>20min) after a stateroot_race attack overlapped an ambient
+      # composer stall. Per the standing rule, pause all load until it recovers
+      # with a new postbatch, so the composer can roll back/recover uninterfered.
+      # Re-enable (true) once `last L1 state root` age drops back to seconds.
+      funder:          { enabled: false, l2_accounts: 40, fund_amount_wei: 100000000000000000 }
+      fuzzer:          { enabled: false, interval_seconds: 2 }
+      contract_caller: { enabled: false, verify: true, rounds: 3 }
+      congestion:      { enabled: false, interval_seconds: 15 }
+      # heavy load — debjit asked to see the L2 under a large tx spam
+      ddos:            { enabled: false, concurrency: 64, rate_per_second: 400, burst: 64 }
+      proxy_builder:   { enabled: false, interval_seconds: 15 }
+      # Cross-chain state-race liveness DoS. DISABLED by default: it freezes the
+      # L2's L1 attestation, which starves every other worker's tests — run it
+      # ALONE, deliberately, on an instance you are cleared to DoS. Confirmed to
+      # block commitment for >10min on this deployment and recover on release.
+      # To arm a dedicated attack run, disable the other workers and set:
+      #   stateroot_race: { enabled: true, attack_seconds: 660, cooldown_seconds: 240 }
+      stateroot_race:  { enabled: false }
+    l1:
+      rpc: "http://37.27.238.19:8545"
+      chain_id: 7331
+      xchain_front: "http://65.109.26.16:18999"
+      min_gas_price_wei: 2000000000
+    l2:
+      rpc: "http://65.109.26.16:18688"
+      chain_id: 6290
+      xchain_front: "http://65.109.26.16:18998"
+      min_gas_price_wei: 1000
+    eez:
+      rollup_id: 1
+      registry: "0x0165878a594ca255338adfa4d48449f69242eb8f"
+      rollup_manager: "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6"
+      proof_system: "0xa513e6e4b8f2a923d98304ec87f64353c4d5c853"
+    blockscout:
+      l1_api: "http://37.27.238.19:4000/api/"
       l2_api: "http://65.109.26.16:8088/api/"
